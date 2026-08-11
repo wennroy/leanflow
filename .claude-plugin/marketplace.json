@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "leanflow",
+  "description": "Lean workflow plugins by wennroy",
+  "owner": {
+    "name": "wennroy"
+  },
+  "plugins": [
+    {
+      "name": "leanflow",
+      "description": "Lean, explicit-invocation workflow: plan -> execute -> review -> verify. Zero always-on injection; deterministic per-task verification; inline-first execution with batched subagent dispatch.",
+      "category": "development",
+      "source": "./"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "leanflow",
+  "description": "Lean, explicit-invocation workflow for Claude Code: plan -> execute -> review -> verify. Zero always-on injection, deterministic per-task verification, inline-first execution with batched subagent dispatch.",
+  "version": "0.1.0",
+  "author": {
+    "name": "wennroy"
+  },
+  "homepage": "https://github.com/wennroy/leanflow",
+  "repository": "https://github.com/wennroy/leanflow",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "planning",
+    "code-review",
+    "lean",
+    "productivity"
+  ]
+}
