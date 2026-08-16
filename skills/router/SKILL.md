@@ -1,9 +1,6 @@
 ---
 name: leanflow-router
-description: Use when the user asks to implement a multi-step feature, large
-  refactor, or migration spanning multiple files — suggests leanflow workflow
-  commands. Do NOT use for questions, small fixes, single-file changes, or
-  exploratory/debugging tasks.
+description: 当用户要求实现多步骤功能、大型重构或跨多文件迁移时使用——建议一次 leanflow 工作流命令。不要用于提问、小修、单文件改动或探索/调试任务。
 ---
 
 # Leanflow Router
