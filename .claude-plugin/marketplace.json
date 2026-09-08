@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "leanflow",
-      "description": "Lean, explicit-invocation workflow: plan -> execute -> review -> verify. Zero always-on injection; deterministic per-task verification; inline-first execution with batched subagent dispatch.",
+      "description": "Lean workflow: plan -> execute, including verification, independent review, user decisions, and plan archival. Standalone review/debug; verify/finish remain compatible entrypoints.",
       "category": "development",
       "source": "./"
     }

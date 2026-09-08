@@ -1,7 +1,7 @@
 {
   "name": "leanflow",
-  "description": "Lean, explicit-invocation workflow for Claude Code: plan -> execute -> review -> verify. Zero always-on injection, deterministic per-task verification, inline-first execution with batched subagent dispatch.",
-  "version": "0.1.0",
+  "description": "Lean, explicit-invocation workflow for Claude Code: plan -> execute, with verification, one independent review, user acceptance, and plan archival included. Standalone review/debug and compatible verify/finish entrypoints.",
+  "version": "0.2.0",
   "author": {
     "name": "wennroy"
   },

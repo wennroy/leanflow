@@ -1,63 +1,97 @@
 # leanflow
 
-A lean workflow plugin for Claude Code — an explicit-invocation alternative to heavyweight process plugins (superpowers-style), designed for large features and refactors.
+A lean, explicit-invocation workflow plugin for Claude Code.
 
-**核心理念**：把"强制链路"换成"显式调用"。所有流程由 `/leanflow:*` 命令显式启动；零 SessionStart 注入；确定性命令替代逐任务 LLM 复审。
+日常使用两个命令：**plan 明确方案，execute 完成实施、验证、一次独立复审与验收归档**。
+保持 `commands/`、`agents/`、`hooks/` 和 `skills/router/` 的 Claude Code 插件组织。
 
 ## Design principles
 
-1. **零注入** — 没有 SessionStart hook、没有 bootstrap 全文。always-on 成本 ≈ 几行 description（~300 tokens），对比 superpowers 6.2 实测 ~4k/session。
-2. **显式调用** — 流程逻辑写在 command 正文里，只在调用时加载（单次 ≤4k tokens）。
-3. **确定性验收** — plan 里每个任务带 `verify:` 命令，跑命令不花 token；LLM reviewer 只在最后看一次全量 diff。
-4. **批量交互** — 澄清用决策树分轮：每轮把整个边界层一次问完、每题附推荐答案（可回「都按推荐」快进）；事实自己查，只把决定留给用户。
-5. **状态在盘上** — `plans/<feature>.md` 的 checkbox 即进度，/compact 或跨会话后 `/leanflow:execute` 重读 plan 接着跑。
+1. **按需加载** — 没有 SessionStart 注入；router 只建议一次，用户可直接工作。
+2. **显式调用** — plan 只产出方案；execute 启动完整执行流程，用户可以要求停在指定阶段。
+3. **确定性验证** — 每项任务说明验收结果和验证方式；成功证据仍有效时复用，变更后检查受影响部分。
+4. **集中交互** — 批量澄清；复审问题集中由用户裁决；人工验收集中确认，不重复索取已有决定。
+5. **状态在盘上** — plan 记录任务进度、验证、复审和裁决。恢复时核对当前代码，从待办阶段继续。
+6. **一套收尾规则** — [references/completion.md](references/completion.md) 定义验证、暂停和归档，多个入口共同引用。
 
-## Contents
+## Commands
 
-| 组件 | 说明 |
-|---|---|
-| `skills/router` | 唯一的自动触发件：检测到大型功能请求时建议一次 `/leanflow:plan`，绝不 nag、绝不阻止工作 |
-| `commands/plan` | 分轮批量澄清 → 代码勘察 → 落盘 plan（关键决定 / 假设 / 每任务 verify 命令） |
-| `commands/execute` | 内联优先执行；连续 ≥2 个独立任务打包给 1 个 implementer；checkbox 断点续跑 |
-| `commands/review` | 单个 reviewer subagent 审全量 diff（spec+质量合并，findings 三级） |
-| `commands/verify` | 终检清单：全局验收、调试残留、非目标核对、关键决定对照 |
-| `commands/finish` | 归档 plan、整理提交、可选 PR |
-| `commands/debug` | 一页纸调试：复现 → 最小化 → 假设 → 修根因 → 回归 |
-| `agents/implementer` | 隔离 context 承接打包任务，回报格式固定（≤60 行） |
-| `agents/reviewer` | spec 符合性 + 代码质量一次看完，阻塞/建议/可选三档 |
-| `hooks/` | Stop→项目 `.claude/verify.sh`（成功静默，失败截断输出，同样失败不重复阻断）；PreToolUse→危险命令护栏 |
+| 命令 | 使用场景 | 结束状态 |
+|---|---|---|
+| `/leanflow:plan` | 新功能、较大重构或重新设计 | 方案和验收标准落盘，等待执行 |
+| `/leanflow:execute` | 按 plan 实施或中断后续跑 | 验证与复审处理完成、人工验收确认后自动归档；否则记录具体待办 |
+| `/leanflow:review` | 单独审代码，或 execute 内部独立复审 | 集中呈现问题，按裁决修复并定向验证；独立调用不归档 |
+| `/leanflow:debug` | 原因未知的报错、回归或异常 | 根因、修复和验证结果；也供 execute 内部使用 |
+| `/leanflow:verify` | 兼容入口，或单独核对验证证据 | 报告通过、失败、未验证、待人工确认；不代替复审或自动归档 |
+| `/leanflow:finish` | 兼容入口，或手动控制计划收尾 | 补足必要检查，条件满足后归档；Git 收尾按明确指令处理 |
+
+`verify` 与 `finish` 继续可用，但日常无需逐个调用。
+单独 review 不要求 plan，可审当前工作区或用户指定的提交范围。
+
+## Typical workflow
+
+```text
+/leanflow:plan 加用户积分系统
+# 批量澄清，生成 plans/add-user-points.md，确认方案
+
+/leanflow:execute plans/add-user-points.md
+# 实施 → 任务与全局验证 → 一次独立复审
+# 有 findings：集中等待用户裁决，修复后定向验证与复核
+# 有人工验收：保留待验收状态，确认后自动归档到 plans/done/
+```
+
+- 执行以主会话内联为主，连续独立的自动任务打包给一个 implementer；独立性同时考虑文件、接口、数据与状态。
+- implementer 与主会话共享工作区，隔离的是 context。implementer 不提交、不勾选、不归档。
+- 主会话保留逐任务提交规则；只暂存对应任务的改动，用户另有要求时遵从。
+- 执行时验证失败，直接使用 debug 方法定位，修复后继续原流程。
+- 复审结果和裁决写入 plan；续跑不重复完整复审或已经确认的事项。
+- 未确认的人工验收不阻止无依赖的实现和复审，但会阻止归档。
+- 已通过的证据不能覆盖后来变化的代码；只补进度记录或移动归档路径无需重跑业务测试。
+- 自动归档不附带 squash、push、PR、merge 或删除分支；归档产生的计划文件改动会如实报告。
 
 ## Install
 
 ```bash
-# 添加 marketplace
 claude plugin marketplace add wennroy/leanflow
-
-# 安装
 claude plugin install leanflow@leanflow
 ```
 
 也可在 Claude Code 内通过 `/plugin` 交互界面完成。
 
-## Hooks 说明
+## Hooks
 
-**Stop hook（验证）** 采用约定式启用：在项目根创建 `.claude/verify.sh` 即生效
-（例如 `#!/bin/sh\npnpm typecheck && pnpm lint`）。不存在则完全静默。
-成功时零输出；失败时把末 100 行喂给模型继续修；同样的失败只报一次。
+**Stop 提醒（可选）**：项目根存在 `.claude/verify.sh` 时，每轮结束执行它。
+适合简短的辅助检查；完整验收由 execute / review 的共用规则负责。
+未创建该文件即不启用，可避免额外的每轮检查。
 
-**PreToolUse hook（护栏）** 只拦灾难性操作：`rm -rf` 根/家/当前目录、
-force push 到 main/master、`git clean -f`、丢弃全工作区改动、dd/mkfs 等。
-放行时零输出。
+成功静默；失败最多保留末 100 行，使用 `systemMessage` 提醒，同样的失败只提醒一次。
+它不会因失败强迫模型继续执行；退出码 0 和静默均不代表项目验证通过。
+有 Python 3 时输出 JSON 提醒，缺少 Python 3 时退化为 stderr 诊断。
+有 `timeout` / `gtimeout` 时设 180 秒上限，否则验证脚本须自行控制运行时间。
 
-## Workflow at a glance
+**PreToolUse 护栏**：保留对灾难性操作的尽力拦截，包括强删根/家/当前目录、
+force push 到 main/master、清除整个工作区和磁盘破坏命令。放行时静默。
+该脚本不是完整的 shell 安全边界。
 
+## Maintenance
+
+修改阶段行为时先更新对应 command；共用验证与归档规则只改
+[references/completion.md](references/completion.md)，agent 职责放在 `agents/`。
+不将整个流程塞进 router，也不为不同入口复制方法论。
+
+```bash
+claude plugin validate .
+claude plugin validate .claude-plugin/plugin.json
+claude plugin validate commands
+claude plugin validate agents
+claude plugin validate skills
+python3 -m unittest discover -s tests -v
+bash -n hooks/scripts/verify-on-stop.sh hooks/scripts/guard-dangerous.sh
+git diff --check
 ```
-/leanflow:plan 加用户积分系统              # 分轮澄清 → plans/add-user-points.md
-/leanflow:execute plans/add-user-points.md  # 内联执行 + 打包派发 + 每任务 verify
-/leanflow:review                           # 单 reviewer 审全量 diff
-/leanflow:verify                           # 终检清单
-/leanflow:finish                           # 归档 + 可选 PR
-```
+
+测试覆盖 Stop 提醒的退出行为与去重；命令方法论还需用实际任务检查暂停、续跑、
+无 plan 复审及人工验收边界，不能用匹配几句文案的测试代替行为验证。
 
 ## License
 
