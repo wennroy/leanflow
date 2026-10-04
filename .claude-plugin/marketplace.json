@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "leanflow",
-      "description": "Lean workflow: plan -> execute, including verification, independent review, user decisions, and plan archival. Standalone review/debug; verify/finish remain compatible entrypoints.",
+      "description": "Lean explicit workflow with low/medium/high/xhigh/max effort, bounded agents, local resumable memory, verification and UAT.",
       "category": "development",
       "source": "./"
     }

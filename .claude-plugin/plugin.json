@@ -1,7 +1,7 @@
 {
   "name": "leanflow",
-  "description": "Lean, explicit-invocation workflow for Claude Code: plan -> execute, with verification, one independent review, user acceptance, and plan archival included. Standalone review/debug and compatible verify/finish entrypoints.",
-  "version": "0.2.0",
+  "description": "Lean explicit workflow with low/medium/high/xhigh/max effort, bounded agents, local resumable memory, verification and UAT.",
+  "version": "0.3.0",
   "author": {
     "name": "wennroy"
   },
@@ -12,7 +12,8 @@
     "workflow",
     "planning",
     "code-review",
-    "lean",
-    "productivity"
+    "local-memory",
+    "effort-levels",
+    "lean"
   ]
 }

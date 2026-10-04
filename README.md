@@ -2,96 +2,141 @@
 
 A lean, explicit-invocation workflow plugin for Claude Code.
 
-日常使用两个命令：**plan 明确方案，execute 完成实施、验证、一次独立复审与验收归档**。
-保持 `commands/`、`agents/`、`hooks/` 和 `skills/router/` 的 Claude Code 插件组织。
+**按需选择投入，围绕一份本地任务记录完成开发、验证与验收。**
+常用入口仍是 `plan` 和 `execute`；小需求可以直接 execute，无需先单独规划。
 
-## Design principles
-
-1. **按需加载** — 没有 SessionStart 注入；router 只建议一次，用户可直接工作。
-2. **显式调用** — plan 只产出方案；execute 启动完整执行流程，用户可以要求停在指定阶段。
-3. **确定性验证** — 每项任务说明验收结果和验证方式；成功证据仍有效时复用，变更后检查受影响部分。
-4. **集中交互** — 批量澄清；复审问题集中由用户裁决；人工验收集中确认，不重复索取已有决定。
-5. **状态在盘上** — plan 记录任务进度、验证、复审和裁决。恢复时核对当前代码，从待办阶段继续。
-6. **一套收尾规则** — [references/completion.md](references/completion.md) 定义验证、暂停和归档，多个入口共同引用。
-
-## Commands
-
-| 命令 | 使用场景 | 结束状态 |
-|---|---|---|
-| `/leanflow:plan` | 新功能、较大重构或重新设计 | 方案和验收标准落盘，等待执行 |
-| `/leanflow:execute` | 按 plan 实施或中断后续跑 | 验证与复审处理完成、人工验收确认后自动归档；否则记录具体待办 |
-| `/leanflow:review` | 单独审代码，或 execute 内部独立复审 | 集中呈现问题，按裁决修复并定向验证；独立调用不归档 |
-| `/leanflow:debug` | 原因未知的报错、回归或异常 | 根因、修复和验证结果；也供 execute 内部使用 |
-| `/leanflow:verify` | 兼容入口，或单独核对验证证据 | 报告通过、失败、未验证、待人工确认；不代替复审或自动归档 |
-| `/leanflow:finish` | 兼容入口，或手动控制计划收尾 | 补足必要检查，条件满足后归档；Git 收尾按明确指令处理 |
-
-`verify` 与 `finish` 继续可用，但日常无需逐个调用。
-单独 review 不要求 plan，可审当前工作区或用户指定的提交范围。
-
-## Typical workflow
+## 使用
 
 ```text
-/leanflow:plan 加用户积分系统
-# 批量澄清，生成 plans/add-user-points.md，确认方案
-
-/leanflow:execute plans/add-user-points.md
-# 实施 → 任务与全局验证 → 一次独立复审
-# 有 findings：集中等待用户裁决，修复后定向验证与复核
-# 有人工验收：保留待验收状态，确认后自动归档到 plans/done/
+/leanflow:execute --level low 修复表单必填校验
+/leanflow:plan --level high 给订单页增加导出功能
+/leanflow:execute
+/leanflow:execute --level max 开发支持导入和筛选的账单工具
 ```
 
-- 执行以主会话内联为主，连续独立的自动任务打包给一个 implementer；独立性同时考虑文件、接口、数据与状态。
-- implementer 与主会话共享工作区，隔离的是 context。implementer 不提交、不勾选、不归档。
-- 主会话保留逐任务提交规则；只暂存对应任务的改动，用户另有要求时遵从。
-- 执行时验证失败，直接使用 debug 方法定位，修复后继续原流程。
-- 复审结果和裁决写入 plan；续跑不重复完整复审或已经确认的事项。
-- 未确认的人工验收不阻止无依赖的实现和复审，但会阻止归档。
-- 已通过的证据不能覆盖后来变化的代码；只补进度记录或移动归档路径无需重跑业务测试。
-- 自动归档不附带 squash、push、PR、merge 或删除分支；归档产生的计划文件改动会如实报告。
+也可说「用 leanflow 的 high 档处理这个需求」「这个任务升级到 xhigh」。
+`plan` 在任何档位都只出方案；`execute` 接受新需求、任务 id 或本地记录绝对路径。
+无参数续跑当前明确的任务；多个候选才询问，不自动重开已完成任务。
 
-## Install
+## 五个 level
+
+| 档位 | 开发方式 | Review 上限 | 全部 Agent 上限 | 验收 |
+|---|---|---:|---:|---|
+| low | 全部内联，短计划 | 0 | 0 | 低成本相关检查 + UAT；不跑 Playwright |
+| medium（默认） | 内联为主 | 2 | 2 | 相关单测/集成 + UAT |
+| high | 必要时打包委派 | 3 | 6 | 独立 tester，核心旅程 E2E |
+| xhigh | 范围内问题尽量收敛 | 6 | 12 | 约定场景、异常与相关回归 |
+| max | 产品补场景、SubAgent 开发、整体验收 | 8 | 24 | 同 xhigh，加完整产品目标核对 |
+
+这些数值是初始策略，尚未完成同任务下的速度/token 标定。上限包含规划期与修后复核；
+Review 同时消耗总额度。连续两轮无实质进展或同一故障连续三次修复失败就暂停该循环。
+预算耗尽保留待办，不代表验证通过。任务恢复或换档不清零，用户可明确追加累计上限。
+
+优先级：本次明确选择 > 当前任务配置 > 项目默认 > medium。
+档位控制工作流，不自动改模型 reasoning effort；不静默升档。
+高档位也只加载当前需要的角色；非浏览器项目使用 API/CLI/集成旅程，Playwright 标不适用。
+
+max 的产品 Agent 可补全既定目标内的遗漏场景，新增产品方向仍由用户决定。
+范围内明确 bug 自动修，产品取舍集中问；独立 review 默认报告，已有修复授权时才改代码。
+max 第一版在当前会话连续推进，中断可恢复；不提供跨会话后台调度。
+
+## 本地 Memory
+
+Git 项目存于 `git rev-parse --git-common-dir` 对应目录下的 `leanflow/`：
+
+```text
+leanflow/
+  project.md          # 可选：项目默认档位与稳定决定
+  tasks/<需求名>.md   # 每个需求唯一记录：计划、进度、问题、验证、UAT、下一步
+```
+
+这是本地 Git 管理目录内的存储，不是工作区中的 tracked 文件。多个 worktree 可读同一份
+记录，但代码不自动转移；恢复先核对来源工作区与证据，不能在新 worktree 重做一遍。
+非 Git 项目回退到项目根 `.leanflow/`；之后初始化 Git 时，在暂存代码前运行
+`/leanflow:memory migrate` 原样迁入 Git 管理目录，保留任务、默认值与累计预算。
+存在目标冲突时拒绝覆盖；未迁移前提示处理，不会当作新任务重建。
+
+子任务和子 Agent 不另建 .sdd/plan/handoff。记录按批次或关键决定更新，恢复只读相关内容；
+done 在原文件标记完成，不生成第二份归档。原始日志/trace 按需保留，引用路径即可。
+
+```text
+/leanflow:memory list
+/leanflow:memory show login
+/leanflow:memory default low
+/leanflow:memory export login --to docs/leanflow/login.md
+```
+
+export 生成精选、带来源的 Markdown 快照，保留本地记录，不自动暂存或提交。
+已有 `plans/*.md` 可显式迁移，保留原文件；必须带入原来的调用次数与真实基线，不能重置。
+详见 [Memory 入口](commands/memory.md) 与 [状态规则](references/memory.md)。
+
+## 命令与完成条件
+
+| 命令 | 用途 |
+|---|---|
+| `/leanflow:plan` | 需求到可执行方案，保存 level，不自动实施 |
+| `/leanflow:execute` | 新需求或续跑；开发、分档验证/Review、UAT、交付 |
+| `/leanflow:review` | 指定任务或 diff 的独立审查，支持无 plan |
+| `/leanflow:debug` | 复现、定位、修复与相关回归 |
+| `/leanflow:verify` | 只核对证据和缺口，兼容旧用法 |
+| `/leanflow:finish` | 沿用档位与预算补收尾，兼容旧用法 |
+| `/leanflow:memory` | 查看任务、设置默认、导出文档 |
+
+自动验证结束可以交付 UAT；用户沉默不能算验收通过。失败、未验证、不适用和已通过明确区分。
+验证绑定相关代码（含未提交变化）、依赖与环境，仍有效就复用，变化后只补受影响部分。
+代码按完整改动批次提交，保留用户已有改动；push/PR/部署/merge 等沿用明确授权。
+发布需要时准备构建、迁移/回滚、发布后检查和观察点，验证与交付规则集中在
+[completion.md](references/completion.md)。
+
+## 安装与运行依赖
 
 ```bash
 claude plugin marketplace add wennroy/leanflow
 claude plugin install leanflow@leanflow
 ```
 
-也可在 Claude Code 内通过 `/plugin` 交互界面完成。
+状态工具使用 Python 3.9+ 标准库，支持 macOS/Linux（目录锁依赖 `fcntl`）。无需数据库、
+常驻服务或新增 Python 包。Claude Code 原生插件结构保持不变；其他宿主若迁移这些指令，
+需提供插件文件路径与等价 Agent 工具，不宣称已完成所有宿主的集成验证。
+
+辅助工具可单独运行：
+
+```bash
+python3 scripts/leanflow.py --help
+python3 scripts/leanflow.py --cwd /path/to/project locate
+```
+
+Slash command 的参数由 Agent 按命令指令解析；状态工具负责确定性地保存和核对预算，
+不拦截插件之外的宿主调用。它会在派发前原子预留额度，checkpoint 用 revision 拒绝旧状态覆盖。
+脚本不能判断一次 Review 是否有价值、UAT 是否真实通过；这些仍需要执行证据。
 
 ## Hooks
 
-**Stop 提醒（可选）**：项目根存在 `.claude/verify.sh` 时，每轮结束执行它。
-适合简短的辅助检查；完整验收由 execute / review 的共用规则负责。
-未创建该文件即不启用，可避免额外的每轮检查。
+不添加 SessionStart 注入或逐工具记账 hook。保留已有两项：
 
-成功静默；失败最多保留末 100 行，使用 `systemMessage` 提醒，同样的失败只提醒一次。
-它不会因失败强迫模型继续执行；退出码 0 和静默均不代表项目验证通过。
-有 Python 3 时输出 JSON 提醒，缺少 Python 3 时退化为 stderr 诊断。
-有 `timeout` / `gtimeout` 时设 180 秒上限，否则验证脚本须自行控制运行时间。
+- Stop：只有项目存在 `.claude/verify.sh` 才执行；成功静默，相同失败提醒去重。
+  它是项目自选检查，可能包含重型命令，不受 level 控制；追求轻量时应保持短小或不配置。
+  hook 静默/退出 0 不代替任务验收证据。有 timeout/gtimeout 时限制 180 秒，否则脚本自行限时。
+- PreToolUse：尽力拦截灾难性删除、对 main/master 的 force push 等操作；不是完整 shell 安全边界。
 
-**PreToolUse 护栏**：保留对灾难性操作的尽力拦截，包括强删根/家/当前目录、
-force push 到 main/master、清除整个工作区和磁盘破坏命令。放行时静默。
-该脚本不是完整的 shell 安全边界。
-
-## Maintenance
-
-修改阶段行为时先更新对应 command；共用验证与归档规则只改
-[references/completion.md](references/completion.md)，agent 职责放在 `agents/`。
-不将整个流程塞进 router，也不为不同入口复制方法论。
+## 验证与维护
 
 ```bash
-claude plugin validate .
-claude plugin validate .claude-plugin/plugin.json
-claude plugin validate commands
-claude plugin validate agents
-claude plugin validate skills
 python3 -m unittest discover -s tests -v
 bash -n hooks/scripts/verify-on-stop.sh hooks/scripts/guard-dangerous.sh
+python3 scripts/check_package.py
 git diff --check
 ```
 
-测试覆盖 Stop 提醒的退出行为与去重；命令方法论还需用实际任务检查暂停、续跑、
-无 plan 复审及人工验收边界，不能用匹配几句文案的测试代替行为验证。
+已安装 Claude CLI 时再执行 `claude plugin validate .` 验证原生打包。
+状态工具测试在临时 Git 仓库与 linked worktree 中验证实际行为，包括预算竞争、恢复、
+未提交代码指纹和显式导出；它们不证明 Agent 遵循所有流程。
+[行为验收场景](tests/behavioral.md) 用于独立实际执行，覆盖 low、预算、恢复、E2E 与 max。
+本地安装后可将[完整验收 Prompt](tests/acceptance-prompt.md) 交给新 agent，使用真实插件入口执行。
+速度统计以同任务、同验收、同模型/环境的测量为准；没有数据就不宣称提速百分比。
+
+修改共用策略更新 references；角色职责放 agents；不要把全套方法论塞进 router，
+也不要为不同 level 复制五套命令或为每个子任务创建记忆文件。
 
 ## License
 
