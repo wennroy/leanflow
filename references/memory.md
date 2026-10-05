@@ -1,6 +1,6 @@
 # 一份需求，一份本地任务记录
 
-工具：`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/leanflow.py"`，以下以 `LF` 指代这条调用。
+工具：`python3 "<plugin-root>/scripts/leanflow.py"`，以下以 `LF` 指代这条调用。
 需 Python 3.9+、macOS/Linux；Git 项目共享根为 `git rev-parse --git-common-dir` 下的
 `leanflow/`，通过 `LF locate` 解析，不能假定当前 `.git` 是目录。非 Git 项目使用
 指定项目根的 `.leanflow/`。后来 git init 时，在 git add 前运行 `LF migrate`：停止其他
@@ -30,12 +30,15 @@
 - frontmatter 由工具管理：level、阶段、累计额度、revision、来源 worktree、基线。
   Markdown 正文是唯一的需求/计划/证据/恢复摘要，子 Agent 只回报，主协调者合并写。
 - `LF checkpoint <id> --revision N --phase awaiting_uat --body -` 原子替换正文。
+  进入 awaiting_uat/done 时同时按 completion 传 `--checks '<JSON>'`，复用既有有效证据。
   只传 `--phase` 时保留正文。revision 取上次工具结果；冲突时重读、合并，不能盲目覆盖。
   `reserve`、`level` 等写操作也递增 revision。短暂锁使用目录本身，无常驻锁文件。
 - 重要决定立即保存；其他在批次完成、等待或交接时合并更新。low 普通直通以初始化/交付
   两次写回为目标，有真正阻塞或中断可加一次，不能因节省写入丢失决定。
 - 正文保留最新有效证据、遗留问题、关键失败原因与下一步，不逐条复制工具输出。
   完整日志/trace 由测试工具按需产生，正文只引用；测试代码属于项目资产。
+- 改档/压缩正文必须保留实际未解决项、决定与证据链接，不能用“全部已保留”替代这些内容。
+  已修结论核对当前交付的代码，已接受遗留引用真实用户决定，不能只复制上次叙述。
 - 一次完整修复循环结束时 `checkpoint --progress yes|no` 更新无进展计数，勿将单次工具
   调用计为一轮。只有实质进展/已有阻塞被新证据解除才能填 yes；续跑和升档不能清零。
 - 多个主会话不要同时推进同一 task；先核对来源 worktree 与正在运行的协调者。

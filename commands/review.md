@@ -5,8 +5,13 @@ argument-hint: [--level <level>] [任务 id/路径或 diff 范围]
 
 # /leanflow:review
 
+先确定 `<plugin-root>`：使用宿主给出的实际安装目录，或从本入口源文件/迁移 Skill 的祖先目录
+查找 `.claude-plugin/plugin.json`（name=leanflow）与 `scripts/leanflow.py`。同会话核实后复用；
+后文占位符替换成该绝对路径，不依赖 shell 中存在 `CLAUDE_PLUGIN_ROOT`。定位失败报告入口缺口，
+不从其他源码目录猜测，不全盘搜索。
+
 按 references/levels.md、references/memory.md 定位范围与预算，使用
-references/completion.md 的证据和处置规则；路径均相对 `${CLAUDE_PLUGIN_ROOT}`。
+references/completion.md 的证据和处置规则；路径均相对 `<plugin-root>`。
 
 ## 范围与预算
 

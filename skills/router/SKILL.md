@@ -14,8 +14,10 @@ description: 用户明确使用 leanflow 或其 effort level 时路由到对应�
 - 自然语言明确指定的 level 等价于 `--level`，支持 low/medium/high/xhigh/max（忽略大小写）。
   升降档跟随当前任务保存，不把模型 reasoning effort 自动映射成流程档位。
 
-插件根是从本文件所在目录向上两级的目录（含 commands/、agents/、references/）；
-原生插件环境亦可用 `${CLAUDE_PLUGIN_ROOT}`。只读当前入口，后续由入口按需加载。
+插件根从宿主给出的实际安装目录或本文件祖先目录定位，核实 `.claude-plugin/plugin.json`
+的 name=leanflow 与 `scripts/leanflow.py`；当前源码布局为本文件目录向上两级。
+`CLAUDE_PLUGIN_ROOT` 仅作候选，不假定 shell 中存在。将核实后的绝对路径交给对应命令，
+同会话复用；只读当前入口，后续按需加载。缺入口时报告安装限制，不拿别处源码冒充已安装。
 
 用户未明确使用 leanflow 时，仅对多步骤、多文件的开发/重构建议一次：
 「这个需求可以用 leanflow，默认 medium；也可以直接开始。」随后继续正常工作。

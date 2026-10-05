@@ -26,6 +26,8 @@ PROFILES = {
 PHASES = ("plan", "implement", "verify", "review", "awaiting_decision",
           "awaiting_uat", "blocked", "done")
 ROLES = ("reviewer", "implementer", "tester", "product", "explorer")
+CHECK_NAMES = ("verification", "review", "e2e", "uat")
+CHECK_STATUSES = ("passed", "pending", "failed", "not_applicable", "waived")
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
 
@@ -147,7 +149,49 @@ def load_task(path):
     if state["review_used"] > state["agents_used"]:
         raise ValueError("review count exceeds total agent count")
     policy(state)
+    if "checks" in state:
+        validate_checks(state["checks"])
     return state, body
+
+
+def validate_checks(checks):
+    if not isinstance(checks, dict) or set(checks) != set(CHECK_NAMES):
+        raise ValueError("checks must contain verification, review, e2e and uat")
+    for name, check in checks.items():
+        if not isinstance(check, dict) or check.get("status") not in CHECK_STATUSES:
+            raise ValueError(f"invalid {name} check status")
+        if not isinstance(check.get("evidence"), str) or not check["evidence"].strip():
+            raise ValueError(f"{name} requires evidence or a pending reason; waived requires user authorization")
+
+
+def delivery(state):
+    """Check recorded prerequisites, not the truth or freshness of agent evidence."""
+    checks = state.get("checks", {})
+    chosen = level(state["level"])
+    optional = {"verification"}
+    if chosen == "low":
+        optional.add("review")
+    if PROFILES[chosen]["e2e"] == "off":
+        optional.add("e2e")
+    missing, waived = [], []
+    for name in CHECK_NAMES:
+        status = checks.get(name, {}).get("status")
+        if status == "waived":
+            waived.append(name)
+        elif status == "passed":
+            if name == "review" and state["review_used"] == 0:
+                missing.append(name)
+            if name == "e2e" and PROFILES[chosen]["e2e"] != "off" and state["agents_used"] <= state["review_used"]:
+                missing.append(name)
+        elif not (status == "not_applicable" and name in optional):
+            missing.append(name)
+    automatic_missing = [name for name in missing if name != "uat"]
+    if state["stalled"] >= 2 or state["phase"] == "blocked":
+        automatic_missing.append("blocked")
+        missing.append("blocked")
+    return {"automatic_complete": not automatic_missing and not any(name != "uat" for name in waived),
+            "ready_for_uat": not automatic_missing, "ready_for_done": not missing,
+            "missing": missing, "waived": waived}
 
 
 @contextmanager
@@ -180,7 +224,8 @@ def write_record(path, state, body):
 
 
 def report(path, state, body):
-    return {"path": str(path), "state": state, "policy": policy(state), "body": body}
+    return {"path": str(path), "state": state, "policy": policy(state),
+            "delivery": delivery(state), "body": body}
 
 
 def resolve_baseline(worktree, reference):
@@ -359,6 +404,14 @@ def run(args):
                     raise ValueError("review budget exhausted (rechecks also count)")
                 state["review_used"] += 1
             state["agents_used"] += 1
+            if "checks" in state:
+                invalidated = {"reviewer": ("review",), "tester": ("e2e",),
+                               "implementer": CHECK_NAMES}.get(args.role, ())
+                for name in invalidated:
+                    if args.role == "implementer" and state["checks"][name]["status"] == "not_applicable":
+                        continue
+                    state["checks"][name] = {"status": "pending",
+                                             "evidence": f"Reserved {args.role}; result not yet recorded"}
         elif command == "checkpoint":
             if args.revision != state["revision"]:
                 raise ValueError("record changed; reread it and merge before checkpointing")
@@ -369,6 +422,13 @@ def run(args):
                 state["baseline"] = baseline
             if args.body:
                 body = read_body(args.body)
+            if args.checks is not None:
+                checks = json.loads(args.checks)
+                validate_checks(checks)
+                for name, previous in state.get("checks", {}).items():
+                    if previous["status"] in ("failed", "pending") and checks[name]["status"] == "not_applicable":
+                        raise ValueError(f"preserve unresolved {name}; resolve it or record an explicit user waiver")
+                state["checks"] = checks
             if args.phase:
                 state["phase"] = args.phase
             if args.progress == "yes":
@@ -377,10 +437,14 @@ def run(args):
                 state["stalled"] += 1
             if state["stalled"] >= policy(state)["stall_limit"]:
                 state["phase"] = "blocked"
+            if state["phase"] in ("awaiting_uat", "done") and "checks" not in state:
+                raise ValueError("delivery checkpoint requires --checks; reuse verified existing evidence")
+            if state["phase"] == "done" and not delivery(state)["ready_for_done"]:
+                raise ValueError("cannot mark done; unresolved checks: " + ", ".join(delivery(state)["missing"]))
         state["revision"] += 1
         state["updated"] = now()
         write_record(path, state, body)
-    return {"path": str(path), "state": state, "policy": policy(state)}
+    return {"path": str(path), "state": state, "policy": policy(state), "delivery": delivery(state)}
 
 
 def parser():
@@ -422,6 +486,7 @@ def parser():
     checkpoint.add_argument("--revision", required=True, type=nonnegative)
     checkpoint.add_argument("--body", help="replacement Markdown body file, or - for stdin; no frontmatter")
     checkpoint.add_argument("--phase", choices=PHASES)
+    checkpoint.add_argument("--checks", help="JSON delivery checks with status/evidence; stored in the same record")
     checkpoint.add_argument("--baseline", help="fill an unknown baseline once verified from history")
     checkpoint.add_argument("--progress", choices=("yes", "no"), help="completed cycle made material progress")
     export = commands.add_parser("export", help="export a curated snapshot; never git add/commit")

@@ -5,7 +5,12 @@ argument-hint: [--level <level>] [需求描述或任务 id/路径]
 
 # /leanflow:execute
 
-读取 `${CLAUDE_PLUGIN_ROOT}/references/levels.md`、`references/memory.md` 和
+先确定 `<plugin-root>`：使用宿主给出的实际安装目录，或从本入口源文件/迁移 Skill 的祖先目录
+查找 `.claude-plugin/plugin.json`（name=leanflow）与 `scripts/leanflow.py`。同会话核实后复用；
+后文占位符替换成该绝对路径，不依赖 shell 中存在 `CLAUDE_PLUGIN_ROOT`。定位失败报告入口缺口，
+不从其他源码目录猜测，不全盘搜索。
+
+读取 `<plugin-root>/references/levels.md`、`references/memory.md` 和
 `references/completion.md`（后两者同样相对插件根）。同一会话已加载则复用。
 先解析 `$ARGUMENTS` 的 `--level`，剩余部分是需求描述或已有任务 id/路径。
 
@@ -41,7 +46,8 @@ high/xhigh 必要时、max 有足够独立工作时，打包派 implementer：
 ## 3 · 分档验证与收敛
 
 - low：相关低成本检查后准备 UAT，记「按 low 未复审、未运行 Playwright」。
-- medium：相关自动检查后按 commands/review.md 进行首审、修复与预算内定向复核。
+- medium：相关无浏览器检查后按 commands/review.md 首审、修复与定向复核；低成本检查
+  不覆盖原故障就留具体 UAT，不默认启动 Playwright，用户显式指定的检查按 levels 处理。
 - high/xhigh：按 agents/tester.md 预留并派 tester，产出可复跑的旅程测试并实际运行。
   按 review 方法审查完整改动（包含新增测试），修复后重验/复核受影响部分。
 - max：product 场景 → 独立实现包 → 集成 → tester / reviewer → 修复循环。
@@ -54,8 +60,9 @@ xhigh/max 尽量处理全部范围内有效问题，但受累计额度与无进�
 
 ## 4 · UAT、交付与恢复
 
-按 completion 规则集中 UAT 和收尾。已实施但未验收保持 awaiting_uat；用户报告缺陷，
-返回相应实施/验证，保留累计次数。仅提供 UAT 通过且代码状态未变时直接更新和收尾。
+按 completion 规则在交付 checkpoint 一起保存 --checks，并依据返回的 delivery 报告缺口。
+已实施但未验收保持 awaiting_uat，不等于自动必需项通过；用户报告缺陷时返回相应阶段，
+保留累计次数。仅收到 UAT 通过、证据仍有效且其他必需项已满足时直接更新和收尾。
 满足条件标 done，原地保留唯一任务记录。需要发布则按既有授权执行并保留发布后检查结果。
 结束前记录下一步；有实际使用数据时只留一行耗时/Agent/记忆写入摘要，拿不到 token 就记不可用。
 max 第一版仅在当前会话循环；中断靠本地记录恢复，不宣称后台持续运行。

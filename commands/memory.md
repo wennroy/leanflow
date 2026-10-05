@@ -5,8 +5,13 @@ argument-hint: [list|show <id>|default <level>|migrate|export <id> [--to <docs/p
 
 # /leanflow:memory
 
-读取 references/memory.md；用 `${CLAUDE_PLUGIN_ROOT}/scripts/leanflow.py` 操作，
-不另建索引、摘要库或数据库。下面 LF 均指 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/leanflow.py"`。
+先确定 `<plugin-root>`：使用宿主给出的实际安装目录，或从本入口源文件/迁移 Skill 的祖先目录
+查找 `.claude-plugin/plugin.json`（name=leanflow）与 `scripts/leanflow.py`。同会话核实后复用；
+后文占位符替换成该绝对路径，不依赖 shell 中存在 `CLAUDE_PLUGIN_ROOT`。定位失败报告入口缺口，
+不从其他源码目录猜测，不全盘搜索。
+
+读取 references/memory.md；用 `<plugin-root>/scripts/leanflow.py` 操作，
+不另建索引、摘要库或数据库。下面 LF 均指 `python3 "<plugin-root>/scripts/leanflow.py"`。
 
 - 无参数/list → `LF list`，展示当前未完成任务及档位/阶段；要历史时用 `list --all`。
 - show → `LF show <id>`，简短说明目标、状态、剩余问题与下一步。
@@ -37,7 +42,7 @@ argument-hint: [list|show <id>|default <level>|migrate|export <id> [--to <docs/p
 ## 主协调者常用操作
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/leanflow.py" new login --level medium --body - <<'MD'
+python3 "<plugin-root>/scripts/leanflow.py" new login --level medium --body - <<'MD'
 # 登录
 目标：在已有登录页显示准确的失败原因。
 验收：已知错误码有对应提示；未知错误有兜底提示。
@@ -46,6 +51,8 @@ MD
 ```
 
 同一需求后续用 show/reserve/checkpoint 更新。正文可通过 stdin 传入，不创建临时交接文件。
+交付 checkpoint 必须同时带 completion 定义的 --checks JSON；show/写回返回 delivery 的
+完成条件和缺口，派发次数不是已完成审查次数。旧记录缺摘要时依据既有证据补齐，不重建任务。
 frontmatter 使用 `key: JSON值` 的 YAML 子集，保持工具管理；不手动修改计数或复制出另一套状态。
 工具在 macOS/Linux 对目录加短锁，checkpoint 还检查 revision；仅保障记录完整性，
 不提供多会话代码调度。命令调用次数上限只能约束遵守 reserve 协议的 Agent，不能拦截宿主

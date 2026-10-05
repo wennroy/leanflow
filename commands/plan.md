@@ -5,8 +5,13 @@ argument-hint: [--level <level>] <需求描述或任务 id/路径>
 
 # /leanflow:plan
 
-解析 `$ARGUMENTS` 的 `--level` 与需求，按 `${CLAUDE_PLUGIN_ROOT}/references/levels.md`
-确定档位，按 `${CLAUDE_PLUGIN_ROOT}/references/memory.md` 定位或创建唯一任务记录。
+先确定 `<plugin-root>`：使用宿主给出的实际安装目录，或从本入口源文件/迁移 Skill 的祖先目录
+查找 `.claude-plugin/plugin.json`（name=leanflow）与 `scripts/leanflow.py`。同会话核实后复用；
+后文占位符替换成该绝对路径，不依赖 shell 中存在 `CLAUDE_PLUGIN_ROOT`。定位失败报告入口缺口，
+不从其他源码目录猜测，不全盘搜索。
+
+解析 `$ARGUMENTS` 的 `--level` 与需求，按 `<plugin-root>/references/levels.md`
+确定档位，按 `<plugin-root>/references/memory.md` 定位或创建唯一任务记录。
 已有内容只加载一次。参数为空且没有明确目标才问「要做什么？」。
 
 ## 明确交付
@@ -16,7 +21,7 @@ argument-hint: [--level <level>] <需求描述或任务 id/路径>
   可逆实现细节自行决定，重要假设简记；不要求消灭所有不确定性才允许开始。
 - 勘察到能定位改动与验收方式即停。low/medium 内联；高档确实需要广泛探索时，
   按预算预留 explorer 后才派发，不为了规划而调用全部角色。
-- max 按预算调用一次 product（读 `${CLAUDE_PLUGIN_ROOT}/agents/product.md`），补全
+- max 按预算调用一次 product（读 `<plugin-root>/agents/product.md`），补全
   既定目标内场景并标注依据/假设。新增产品方向交用户，不能由 product 自行扩张。
 
 ## 一份可执行记录

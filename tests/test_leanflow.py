@@ -42,6 +42,119 @@ class MemoryTests(unittest.TestCase):
             args.extend(["--level", level])
         return self.call(*args)
 
+    def checks(self, **statuses):
+        return json.dumps({name: {"status": statuses.get(name, "passed"),
+                                  "evidence": "Unit fixture: explicit result/decision"}
+                           for name in ("verification", "review", "e2e", "uat")})
+
+    def test_delivery_cannot_replace_required_review_with_zero_calls(self):
+        self.new(level="xhigh")
+        result = self.call("checkpoint", "sample", "--revision", "0", "--phase", "awaiting_uat",
+                           "--checks", self.checks(review="pending", uat="pending"))
+        self.assertFalse(result["delivery"]["ready_for_uat"])
+        self.assertIn("review", result["delivery"]["missing"])
+        before = Path(result["path"]).read_bytes()
+        self.call("checkpoint", "sample", "--revision", "1", "--phase", "done",
+                  "--checks", self.checks(), ok=False)
+        self.assertEqual(Path(result["path"]).read_bytes(), before)
+
+    def test_low_delivery_requires_user_uat_without_extra_writes(self):
+        self.new(level="low")
+        pending = self.checks(review="not_applicable", e2e="not_applicable", uat="pending")
+        ready = self.call("checkpoint", "sample", "--revision", "0", "--phase", "awaiting_uat",
+                          "--checks", pending)
+        self.assertTrue(ready["delivery"]["ready_for_uat"])
+        self.assertFalse(ready["delivery"]["ready_for_done"])
+        self.assertEqual(ready["state"]["revision"], 1)
+        self.call("checkpoint", "sample", "--revision", "1", "--phase", "done", ok=False)
+        done = self.call("checkpoint", "sample", "--revision", "1", "--phase", "done",
+                         "--checks", self.checks(review="not_applicable", e2e="not_applicable"))
+        self.assertTrue(done["delivery"]["ready_for_done"])
+
+    def test_uat_does_not_override_failed_automatic_check(self):
+        self.new()
+        self.call("reserve", "sample", "reviewer")
+        self.call("checkpoint", "sample", "--revision", "1", "--phase", "done",
+                  "--checks", self.checks(verification="failed", e2e="not_applicable"), ok=False)
+
+    def test_failed_review_dispatch_cannot_count_as_review_result(self):
+        self.new()
+        self.call("reserve", "sample", "reviewer")
+        result = self.call("checkpoint", "sample", "--revision", "1", "--phase", "awaiting_uat",
+                           "--checks", self.checks(review="pending", e2e="not_applicable", uat="pending"))
+        self.assertFalse(result["delivery"]["automatic_complete"])
+        self.assertIn("review", result["delivery"]["missing"])
+
+    def test_downgrade_preserves_missing_review_until_explicit_waiver(self):
+        self.new(level="high")
+        self.call("checkpoint", "sample", "--revision", "0", "--phase", "awaiting_uat",
+                  "--checks", self.checks(review="pending", uat="pending"))
+        lowered = self.call("level", "sample", "low")
+        self.assertIn("review", lowered["delivery"]["missing"])
+        self.call("checkpoint", "sample", "--revision", "2", "--phase", "done",
+                  "--checks", self.checks(review="not_applicable"), ok=False)
+        waived = self.call("checkpoint", "sample", "--revision", "2", "--phase", "done",
+                           "--checks", self.checks(review="waived"))
+        self.assertTrue(waived["delivery"]["ready_for_done"])
+        self.assertFalse(waived["delivery"]["automatic_complete"])
+
+    def test_delivery_rejects_empty_evidence_and_preserves_previous_record(self):
+        created = self.new(level="low")
+        before = Path(created["path"]).read_bytes()
+        checks = json.loads(self.checks(review="not_applicable", e2e="not_applicable"))
+        checks["uat"]["evidence"] = " "
+        self.call("checkpoint", "sample", "--revision", "0", "--phase", "done",
+                  "--checks", json.dumps(checks), ok=False)
+        self.assertEqual(Path(created["path"]).read_bytes(), before)
+
+    def test_legacy_records_remain_readable_without_silent_gate_success(self):
+        created = self.new()
+        before = Path(created["path"]).read_bytes()
+        result = self.call("show", "sample")
+        self.assertFalse(result["delivery"]["ready_for_done"])
+        self.assertIn("review", result["delivery"]["missing"])
+        self.assertEqual(Path(created["path"]).read_bytes(), before)
+
+    def test_recheck_reservation_invalidates_old_review_result(self):
+        self.new()
+        self.call("reserve", "sample", "reviewer")
+        self.call("checkpoint", "sample", "--revision", "1", "--phase", "awaiting_uat",
+                  "--checks", self.checks(e2e="not_applicable", uat="pending"))
+        result = self.call("reserve", "sample", "reviewer")
+        self.assertIn("review", result["delivery"]["missing"])
+
+    def test_high_cannot_claim_independent_e2e_with_only_a_reviewer(self):
+        self.new(level="high")
+        self.call("reserve", "sample", "reviewer")
+        result = self.call("checkpoint", "sample", "--revision", "1", "--phase", "awaiting_uat",
+                           "--checks", self.checks(uat="pending"))
+        self.assertIn("e2e", result["delivery"]["missing"])
+
+    def test_high_with_completed_checks_can_finish_after_user_uat(self):
+        self.new(level="high")
+        self.call("reserve", "sample", "tester")
+        self.call("reserve", "sample", "reviewer")
+        ready = self.call("checkpoint", "sample", "--revision", "2", "--phase", "awaiting_uat",
+                          "--checks", self.checks(uat="pending"))
+        self.assertTrue(ready["delivery"]["automatic_complete"])
+        done = self.call("checkpoint", "sample", "--revision", "3", "--phase", "done",
+                         "--checks", self.checks())
+        self.assertTrue(done["delivery"]["ready_for_done"])
+
+    def test_upgrade_requires_new_e2e_but_preserves_review_evidence(self):
+        self.new()
+        self.call("reserve", "sample", "reviewer")
+        self.call("checkpoint", "sample", "--revision", "1", "--phase", "awaiting_uat",
+                  "--checks", self.checks(e2e="not_applicable", uat="pending"))
+        upgraded = self.call("level", "sample", "high")
+        self.assertEqual(upgraded["delivery"]["missing"], ["e2e", "uat"])
+        self.assertEqual(upgraded["state"]["review_used"], 1)
+
+    def test_missing_delivery_checks_are_not_silently_accepted(self):
+        self.new(level="low")
+        result = self.call("checkpoint", "sample", "--revision", "0", "--phase", "done", ok=False)
+        self.assertIn("--checks", result.stderr)
+
     def test_locate_is_read_only_and_handles_nested_directories(self):
         nested = self.repo / "src"
         nested.mkdir()
@@ -141,9 +254,10 @@ class MemoryTests(unittest.TestCase):
         self.assertIn("User requested", changed["state"]["budget_reason"])
 
     def test_status_and_completed_task_are_preserved(self):
-        created = self.new()
+        created = self.new(level="low")
         done = self.call("checkpoint", "sample", "--revision", str(created["state"]["revision"]),
-                         "--phase", "done")
+                         "--phase", "done", "--checks",
+                         self.checks(review="not_applicable", e2e="not_applicable"))
         self.assertEqual(self.call("list")["tasks"], [])
         self.assertEqual(len(self.call("list", "--all")["tasks"]), 1)
         self.call("reserve", "sample", "reviewer", ok=False)
@@ -266,7 +380,8 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(
             ["git", "-C", str(plain), "status", "--porcelain"], text=True), "")
         self.call("checkpoint", "ongoing", "--revision", str(saved["state"]["revision"]),
-                  "--phase", "awaiting_uat", cwd=plain)
+                  "--phase", "awaiting_uat", "--checks",
+                  self.checks(e2e="pending", uat="pending"), cwd=plain)
 
     def test_git_init_migration_refuses_conflicting_or_tracked_memory(self):
         plain = self.base / "plain"

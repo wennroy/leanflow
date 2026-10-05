@@ -23,7 +23,7 @@ A lean, explicit-invocation workflow plugin for Claude Code.
 | 档位 | 开发方式 | Review 上限 | 全部 Agent 上限 | 验收 |
 |---|---|---:|---:|---|
 | low | 全部内联，短计划 | 0 | 0 | 低成本相关检查 + UAT；不跑 Playwright |
-| medium（默认） | 内联为主 | 2 | 2 | 相关单测/集成 + UAT |
+| medium（默认） | 内联为主 | 2 | 2 | 无浏览器的相关单测/DOM/集成 + UAT |
 | high | 必要时打包委派 | 3 | 6 | 独立 tester，核心旅程 E2E |
 | xhigh | 范围内问题尽量收敛 | 6 | 12 | 约定场景、异常与相关回归 |
 | max | 产品补场景、SubAgent 开发、整体验收 | 8 | 24 | 同 xhigh，加完整产品目标核对 |
@@ -35,6 +35,8 @@ Review 同时消耗总额度。连续两轮无实质进展或同一故障连续�
 优先级：本次明确选择 > 当前任务配置 > 项目默认 > medium。
 档位控制工作流，不自动改模型 reasoning effort；不静默升档。
 高档位也只加载当前需要的角色；非浏览器项目使用 API/CLI/集成旅程，Playwright 标不适用。
+medium 默认不启动浏览器，现成脚本也一样；用户明确要求的特定浏览器检查可内联运行并记录，
+不自动升档或派 tester。未覆盖的原故障路径留明确 UAT，不把无关单测全绿当作修复证据。
 
 max 的产品 Agent 可补全既定目标内的遗漏场景，新增产品方向仍由用户决定。
 范围内明确 bug 自动修，产品取舍集中问；独立 review 默认报告，已有修复授权时才改代码。
@@ -83,6 +85,11 @@ export 生成精选、带来源的 Markdown 快照，保留本地记录，不自
 | `/leanflow:memory` | 查看任务、设置默认、导出文档 |
 
 自动验证结束可以交付 UAT；用户沉默不能算验收通过。失败、未验证、不适用和已通过明确区分。
+交付 checkpoint 同时保存四项摘要（相关验证、Review、E2E、UAT）并返回 delivery 缺口。
+缺少必需 Review 或失败仍未处置时不能宣称自动验收完成；UAT 确认也不覆盖这些缺口。
+工具拒绝不满足记录中完成条件的 done；明确豁免须附用户决定，不能写成通过。
+摘要仍保存在原 Markdown，low 普通交付仍可只写初始化/交付两次。旧记录可读，首次交付
+更新时依据已有证据补齐摘要即可，不因格式升级重跑整套验证。
 验证绑定相关代码（含未提交变化）、依赖与环境，仍有效就复用，变化后只补受影响部分。
 代码按完整改动批次提交，保留用户已有改动；push/PR/部署/merge 等沿用明确授权。
 发布需要时准备构建、迁移/回滚、发布后检查和观察点，验证与交付规则集中在
@@ -95,9 +102,24 @@ claude plugin marketplace add wennroy/leanflow
 claude plugin install leanflow@leanflow
 ```
 
+本地 worktree 安装先把该目录登记为 marketplace，再按插件名安装，不能把裸路径当插件名：
+
+```bash
+claude plugin marketplace add /absolute/path/to/leanflow
+claude plugin install leanflow@leanflow
+claude plugin list
+```
+
+核对实际来源目录及 manifest 版本（本版 0.3.1）；同名 marketplace 已存在时先检查指向，
+按宿主的更新/重新登记方式处理冲突，避免仍加载另一目录的旧版。已开启会话需按宿主机制
+重载插件或开始新会话。以上是 Claude Code 入口；其他宿主使用自己的安装机制。
+
 状态工具使用 Python 3.9+ 标准库，支持 macOS/Linux（目录锁依赖 `fcntl`）。无需数据库、
 常驻服务或新增 Python 包。Claude Code 原生插件结构保持不变；其他宿主若迁移这些指令，
 需提供插件文件路径与等价 Agent 工具，不宣称已完成所有宿主的集成验证。
+入口从宿主提供的实际安装路径或入口文件位置定位，不依赖 shell 中存在 CLAUDE_PLUGIN_ROOT。
+0.3.0 验收已有 Claude Code Skill 和 Codex 已安装 router 的实际调用证据；DSH 当时只有
+授权模拟路径，没有原生加载证据。本次 0.3.1 未重新执行完整跨宿主行为验收。
 
 辅助工具可单独运行：
 
@@ -108,7 +130,8 @@ python3 scripts/leanflow.py --cwd /path/to/project locate
 
 Slash command 的参数由 Agent 按命令指令解析；状态工具负责确定性地保存和核对预算，
 不拦截插件之外的宿主调用。它会在派发前原子预留额度，checkpoint 用 revision 拒绝旧状态覆盖。
-脚本不能判断一次 Review 是否有价值、UAT 是否真实通过；这些仍需要执行证据。
+交付摘要会检查所选档位的必需项及基本计数一致性；脚本不能判断证据真假、一次 Review
+是否有价值或 UAT 是否真实通过，也不能自动感知所有代码/环境变化，协调者须核对证据。
 
 ## Hooks
 
@@ -134,6 +157,9 @@ git diff --check
 [行为验收场景](tests/behavioral.md) 用于独立实际执行，覆盖 low、预算、恢复、E2E 与 max。
 本地安装后可将[完整验收 Prompt](tests/acceptance-prompt.md) 交给新 agent，使用真实插件入口执行。
 速度统计以同任务、同验收、同模型/环境的测量为准；没有数据就不宣称提速百分比。
+任务成功写入数从 new 的 revision=0 起算为 revision+1（截取阶段时用差值）；default 和导出
+单列，level/budget/reserve 也计更新。耗时区分实际工作、宿主中断/等待与采集尾部延迟，
+并记录同时启用的其他技能，不把它们混成 leanflow 的纯流程开销。
 
 修改共用策略更新 references；角色职责放 agents；不要把全套方法论塞进 router，
 也不要为不同 level 复制五套命令或为每个子任务创建记忆文件。
