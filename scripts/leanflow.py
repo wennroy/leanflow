@@ -15,13 +15,14 @@ import sys
 import tempfile
 
 
-# Workflow budgets, independent of the host model's reasoning effort.
+# None means no default total cap; Review still has its own cumulative limit.
+# Workflow budgets are independent of the host model's reasoning effort.
 PROFILES = {
     "low": {"review_limit": 0, "agent_limit": 0, "e2e": "off"},
-    "medium": {"review_limit": 2, "agent_limit": 2, "e2e": "off"},
-    "high": {"review_limit": 3, "agent_limit": 6, "e2e": "core"},
-    "xhigh": {"review_limit": 6, "agent_limit": 12, "e2e": "scenarios"},
-    "max": {"review_limit": 8, "agent_limit": 24, "e2e": "scenarios"},
+    "medium": {"review_limit": 2, "agent_limit": None, "e2e": "off"},
+    "high": {"review_limit": 3, "agent_limit": None, "e2e": "core"},
+    "xhigh": {"review_limit": 6, "agent_limit": None, "e2e": "scenarios"},
+    "max": {"review_limit": 8, "agent_limit": None, "e2e": "scenarios"},
 }
 PHASES = ("plan", "implement", "verify", "review", "awaiting_decision",
           "awaiting_uat", "blocked", "done")
@@ -53,6 +54,10 @@ def nonnegative(value):
     if number < 0:
         raise argparse.ArgumentTypeError("must be nonnegative")
     return number
+
+
+def agent_budget(value):
+    return "unlimited" if value.lower() == "unlimited" else nonnegative(value)
 
 
 def git(cwd, *args):
@@ -383,9 +388,12 @@ def run(args):
                 raise ValueError("provide --review and/or --agents")
             if not args.reason.strip():
                 raise ValueError("record the user's authorization in --reason")
-            for option, key in ((args.review, "review_limit"), (args.agents, "agent_limit")):
-                if option is not None:
-                    state[key] = option
+            if args.review is not None:
+                state["review_limit"] = args.review
+            if args.agents == "unlimited":
+                state.pop("agent_limit", None)
+            elif args.agents is not None:
+                state["agent_limit"] = args.agents
             state["budget_reason"] = args.reason
         elif command == "reserve":
             limits = policy(state)
@@ -397,7 +405,7 @@ def run(args):
                 raise ValueError("product agent requires max")
             if args.role == "tester" and limits["e2e"] == "off":
                 raise ValueError("dedicated E2E tester is disabled at this level")
-            if state["agents_used"] >= limits["agent_limit"]:
+            if limits["agent_limit"] is not None and state["agents_used"] >= limits["agent_limit"]:
                 raise ValueError("total agent budget exhausted")
             if args.role == "reviewer":
                 if state["review_used"] >= limits["review_limit"]:
@@ -476,7 +484,8 @@ def parser():
     budget = commands.add_parser("budget", help="explicitly authorized budget adjustment")
     budget.add_argument("task")
     budget.add_argument("--review", type=nonnegative)
-    budget.add_argument("--agents", type=nonnegative)
+    budget.add_argument("--agents", type=agent_budget, metavar="N|unlimited",
+                        help="optional cumulative total cap; unlimited removes an explicit cap, not Review limits")
     budget.add_argument("--reason", required=True)
     reserve = commands.add_parser("reserve", help="reserve one agent invocation BEFORE dispatch")
     reserve.add_argument("task")

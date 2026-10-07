@@ -1,7 +1,7 @@
 {
   "name": "leanflow",
-  "description": "Lean explicit workflow with low/medium/high/xhigh/max effort, bounded agents, local resumable memory, verification and UAT.",
-  "version": "0.3.2",
+  "description": "Lean explicit workflow with low/medium/high/xhigh/max effort, task-based delegation, bounded review, local resumable memory, verification and UAT.",
+  "version": "0.3.3",
   "author": {
     "name": "wennroy"
   },

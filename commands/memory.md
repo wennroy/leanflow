@@ -24,8 +24,11 @@ argument-hint: "[list|show <id>|default <level>|migrate|export <id> [--to <docs/
   未指定位置则选 docs/leanflow/<id>.md；冲突选新名字，不覆盖。保留代码状态与证据限制，
   不复制原始日志、凭据、临时推理。工具写来源 task/revision/时间/HEAD，HEAD 不代替未提交
   代码证据。原任务继续保留；不自动 git add/commit，用户已要求提交时按该授权处理。
-- 用户明确追加预算：`LF budget <id> --review N --agents N --reason '<授权与原因>'`。
-  N 是累计上限，不是新增次数；不重置计数。无需新建配置文件。
+- 用户明确调整预算：`LF budget <id> --review N --agents N --reason '<授权与原因>'`，
+  两个参数可分别设置。N 是累计上限，不是新增次数；不重置计数。无需新建配置文件。
+  medium 起总派发默认只统计；设置 --agents N 后全部角色都占用这个总额度。
+  用户要撤销总上限用 `LF budget <id> --agents unlimited --reason '<授权与原因>'`，
+  不改变 Review 上限、累计次数或 low 的零 Agent 规则，不自动取消旧任务的显式总上限。
 
 ## 旧 plans 兼容（只有遇到旧记录时才读）
 
