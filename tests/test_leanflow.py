@@ -209,6 +209,113 @@ class MemoryTests(unittest.TestCase):
             self.call("reserve", "sample", role, ok=False)
         self.assertEqual(self.call("show", "sample")["state"]["agents_used"], 0)
 
+    def test_medium_delegates_eight_tasks_without_spending_review_budget(self):
+        self.new()
+        for _ in range(8):
+            self.call("reserve", "sample", "implementer")
+        implemented = self.call("show", "sample")
+        self.assertEqual(implemented["state"]["agents_used"], 8)
+        self.assertEqual(implemented["state"]["review_used"], 0)
+        self.call("reserve", "sample", "reviewer")
+        reviewed = self.call("reserve", "sample", "reviewer")
+        self.assertEqual(reviewed["state"]["agents_used"], 10)
+        before = Path(reviewed["path"]).read_bytes()
+        self.assertIn("review budget exhausted", self.call("reserve", "sample", "reviewer", ok=False).stderr)
+        self.assertEqual(Path(reviewed["path"]).read_bytes(), before)
+        # Exhausting Review prevents another Review, not authorized implementation.
+        repaired = self.call("reserve", "sample", "implementer")
+        self.assertEqual(repaired["state"]["agents_used"], 11)
+        self.assertEqual(repaired["state"]["review_used"], 2)
+
+    def test_non_low_profiles_have_no_default_total_cap(self):
+        for chosen, reviews in (("medium", 2), ("high", 3), ("xhigh", 6), ("max", 8)):
+            with self.subTest(level=chosen):
+                created = self.new("task-" + chosen, chosen)
+                self.assertIsNone(created["policy"]["agent_limit"])
+                self.assertEqual(created["policy"]["review_limit"], reviews)
+
+    def test_medium_delegation_does_not_enable_product_or_e2e_tester(self):
+        self.new()
+        for _ in range(3):
+            self.call("reserve", "sample", "implementer")
+        self.assertIn("requires max", self.call("reserve", "sample", "product", ok=False).stderr)
+        self.assertIn("disabled", self.call("reserve", "sample", "tester", ok=False).stderr)
+        self.assertEqual(self.call("show", "sample")["state"]["agents_used"], 3)
+
+    def test_explicit_total_cap_counts_all_roles_and_survives_level_change(self):
+        self.new()
+        self.call("budget", "sample", "--agents", "3", "--reason", "User requested a total cap")
+        self.call("reserve", "sample", "implementer")
+        self.call("reserve", "sample", "reviewer")
+        self.call("reserve", "sample", "implementer")
+        resumed = self.call("level", "sample", "max")
+        self.assertEqual(resumed["policy"]["agent_limit"], 3)
+        self.assertEqual(resumed["state"]["agents_used"], 3)
+        for role in ("implementer", "reviewer", "tester", "product", "explorer"):
+            with self.subTest(role=role):
+                self.assertIn("total agent budget exhausted", self.call("reserve", "sample", role, ok=False).stderr)
+
+    def test_concurrent_implementation_reservations_respect_explicit_total_cap(self):
+        self.new()
+        self.call("budget", "sample", "--agents", "2", "--reason", "User requested a total cap")
+        def reserve(_):
+            return subprocess.run([sys.executable, str(CLI), "--cwd", str(self.repo),
+                                   "reserve", "sample", "implementer"], capture_output=True).returncode
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            codes = list(pool.map(reserve, range(6)))
+        self.assertEqual(codes.count(0), 2)
+        self.assertEqual(self.call("show", "sample")["state"]["agents_used"], 2)
+
+    def test_removing_total_cap_preserves_usage_and_review_limit(self):
+        self.new()
+        self.call("budget", "sample", "--agents", "3", "--reason", "User requested a total cap")
+        self.call("reserve", "sample", "reviewer")
+        self.call("reserve", "sample", "reviewer")
+        self.call("reserve", "sample", "implementer")
+        self.call("reserve", "sample", "implementer", ok=False)
+        changed = self.call("budget", "sample", "--agents", "unlimited", "--reason", "User removed the total cap")
+        self.assertIsNone(changed["policy"]["agent_limit"])
+        self.assertNotIn("agent_limit", changed["state"])
+        self.assertEqual(changed["state"]["agents_used"], 3)
+        self.assertEqual(changed["state"]["review_used"], 2)
+        self.assertEqual(changed["policy"]["review_limit"], 2)
+        self.call("reserve", "sample", "reviewer", ok=False)
+        resumed = self.call("reserve", "sample", "implementer")
+        self.assertEqual(resumed["state"]["agents_used"], 4)
+
+    def test_removing_total_cap_does_not_enable_low_agents(self):
+        self.new(level="low")
+        self.call("budget", "sample", "--agents", "5", "--review", "4", "--reason", "User budget override")
+        changed = self.call("budget", "sample", "--agents", "unlimited", "--reason", "User removed the total cap")
+        self.assertEqual(changed["policy"]["agent_limit"], 0)
+        self.call("reserve", "sample", "implementer", ok=False)
+        raised = self.call("level", "sample", "medium")
+        self.assertIsNone(raised["policy"]["agent_limit"])
+        self.assertEqual(raised["policy"]["review_limit"], 4)
+
+    def test_invalid_budget_changes_preserve_record(self):
+        created = self.new()
+        before = Path(created["path"]).read_bytes()
+        for option, value in (("--agents", "-1"), ("--agents", "auto"), ("--agents", "null"),
+                              ("--review", "unlimited")):
+            with self.subTest(option=option, value=value):
+                self.call("budget", "sample", option, value, "--reason", "Invalid input", ok=False)
+                self.assertEqual(Path(created["path"]).read_bytes(), before)
+
+    def test_old_record_without_override_resumes_without_resetting_counts(self):
+        created = self.new()
+        path = Path(created["path"])
+        # Same schema-1 fields as a pre-0.3.3 task that reached the old medium cap.
+        path.write_text(path.read_text().replace("agents_used: 0", "agents_used: 2")
+                        .replace("review_used: 0", "review_used: 1"))
+        before = path.read_bytes()
+        resumed = self.call("show", "sample")
+        self.assertIsNone(resumed["policy"]["agent_limit"])
+        self.assertEqual(path.read_bytes(), before)
+        reserved = self.call("reserve", "sample", "implementer")
+        self.assertEqual(reserved["state"]["agents_used"], 3)
+        self.assertEqual(reserved["state"]["review_used"], 1)
+
     def test_budget_survives_restarts_and_level_change(self):
         self.new()
         self.call("reserve", "sample", "reviewer")

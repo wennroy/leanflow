@@ -1,6 +1,6 @@
 ---
 description: 从已有本地任务继续验收与交付收尾，沿用档位和累计预算
-argument-hint: [任务 id/路径]
+argument-hint: "[任务 id/路径]"
 ---
 
 # /leanflow:finish

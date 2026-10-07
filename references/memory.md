@@ -29,6 +29,9 @@
 
 - frontmatter 由工具管理：level、阶段、累计额度、revision、来源 worktree、基线。
   Markdown 正文是唯一的需求/计划/证据/恢复摘要，子 Agent 只回报，主协调者合并写。
+- 计划内可委派任务的依赖、进度和结果也放在这份正文，不为每个 subtask 新建记忆。
+  `agents_used` 统计全部派发，`review_used` 仅统计 Review；medium 起默认总次数不设硬上限。
+  旧记录无需迁移或改 schema，计数保留；已有 agent_limit 覆盖值继续生效，不能推测为旧默认并删除。
 - `LF checkpoint <id> --revision N --phase awaiting_uat --body -` 原子替换正文。
   进入 awaiting_uat/done 时同时按 completion 传 `--checks '<JSON>'`，复用既有有效证据。
   只传 `--phase` 时保留正文。revision 取上次工具结果；冲突时重读、合并，不能盲目覆盖。

@@ -1,6 +1,6 @@
 ---
 description: 精简调试流程：复现 → 最小化 → 假设 → 修复 → 回归验证
-argument-hint: <问题现象描述>
+argument-hint: "<问题现象描述>"
 ---
 
 # /leanflow:debug

@@ -1,6 +1,6 @@
 ---
 description: 对指定任务或 diff 独立复审，按累计预算处理 findings 与定向复核
-argument-hint: [--level <level>] [任务 id/路径或 diff 范围]
+argument-hint: "[--level <level>] [任务 id/路径或 diff 范围]"
 ---
 
 # /leanflow:review
@@ -24,6 +24,8 @@ references/completion.md 的证据和处置规则；路径均相对 `<plugin-roo
   execute 的 low 不进入本命令。不可偷偷升档。
 - 对有任务的每次首审/复核，先 `reserve <id> reviewer` 再派发；无任务也遵守相同上限。
   额度不足或独立 Agent 不可用，保留待复审缺口，不能冒充通过。
+- Review 额度按整个需求累计，开发派发不消耗它。默认在集成后的可验收批次集中审查，
+  不对每个 subtask 附加完整 Review；高风险任务提前审查仍计入同一上限，不按子任务重置。
 
 ## 一次完整首审，随后定向复核
 
