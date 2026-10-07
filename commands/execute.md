@@ -1,6 +1,6 @@
 ---
 description: 按 effort level 执行新需求或续跑本地任务，完成开发、分档验证、UAT 和交付
-argument-hint: [--level <level>] [需求描述或任务 id/路径]
+argument-hint: "[--level <level>] [需求描述或任务 id/路径]"
 ---
 
 # /leanflow:execute

@@ -1,6 +1,6 @@
 ---
 description: 查看本地任务、设置项目默认档位，或将精选任务快照导出到 docs
-argument-hint: [list|show <id>|default <level>|migrate|export <id> [--to <docs/path.md>]]
+argument-hint: "[list|show <id>|default <level>|migrate|export <id> [--to <docs/path.md>]]"
 ---
 
 # /leanflow:memory

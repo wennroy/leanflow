@@ -110,7 +110,7 @@ claude plugin install leanflow@leanflow
 claude plugin list
 ```
 
-核对实际来源目录及 manifest 版本（本版 0.3.1）；同名 marketplace 已存在时先检查指向，
+核对实际来源目录及 manifest 版本（本版 0.3.2）；同名 marketplace 已存在时先检查指向，
 按宿主的更新/重新登记方式处理冲突，避免仍加载另一目录的旧版。已开启会话需按宿主机制
 重载插件或开始新会话。以上是 Claude Code 入口；其他宿主使用自己的安装机制。
 
@@ -119,7 +119,7 @@ claude plugin list
 需提供插件文件路径与等价 Agent 工具，不宣称已完成所有宿主的集成验证。
 入口从宿主提供的实际安装路径或入口文件位置定位，不依赖 shell 中存在 CLAUDE_PLUGIN_ROOT。
 0.3.0 验收已有 Claude Code Skill 和 Codex 已安装 router 的实际调用证据；DSH 当时只有
-授权模拟路径，没有原生加载证据。本次 0.3.1 未重新执行完整跨宿主行为验收。
+授权模拟路径，没有原生加载证据。本次 0.3.2 未重新执行完整跨宿主行为验收。
 
 辅助工具可单独运行：
 
@@ -163,6 +163,8 @@ git diff --check
 
 修改共用策略更新 references；角色职责放 agents；不要把全套方法论塞进 router，
 也不要为不同 level 复制五套命令或为每个子任务创建记忆文件。
+命令 frontmatter 的 `argument-hint` 统一使用 JSON 双引号字符串，避免参数中的方括号被
+YAML 解析为数组；离线结构检查会校验这项约定，但不是完整的 YAML 解析器。
 
 ## License
 

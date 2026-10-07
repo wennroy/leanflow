@@ -4,7 +4,7 @@
 
 ---
 
-请在当前 harness 中验收我已经通过本地安装方式装好的 leanflow 插件，预期版本 0.3.1。
+请在当前 harness 中验收我已经通过本地安装方式装好的 leanflow 插件，预期版本 0.3.2。
 你的任务是使用已安装插件执行真实工作流并报告问题，不是继续开发 leanflow。
 
 报告路径固定为 `~/leanflow-acceptance/<harness>/<run-id>/acceptance-report.md`。

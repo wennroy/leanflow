@@ -1,6 +1,6 @@
 ---
 description: 对指定任务或 diff 独立复审，按累计预算处理 findings 与定向复核
-argument-hint: [--level <level>] [任务 id/路径或 diff 范围]
+argument-hint: "[--level <level>] [任务 id/路径或 diff 范围]"
 ---
 
 # /leanflow:review

@@ -43,6 +43,15 @@ def check(root):
             fields[key] = value.strip()
         if not fields.get("description"):
             errors.append(f"missing description: {path.relative_to(root)}")
+        if "argument-hint" in fields:
+            # JSON strings are valid YAML scalars; brackets in CLI help must stay text.
+            # Enforce this narrow authoring rule without adding a YAML dependency.
+            try:
+                hint = json.loads(fields["argument-hint"])
+            except ValueError:
+                hint = None
+            if not isinstance(hint, str) or not hint:
+                errors.append(f"argument-hint must be a nonempty JSON-quoted string: {path.relative_to(root)}")
         if path.parent.name == "agents" and fields.get("name") != path.stem:
             errors.append(f"agent name mismatch: {path.name}")
         if path.name == "SKILL.md" and not re.fullmatch(r"[a-z0-9-]+", fields.get("name", "")):

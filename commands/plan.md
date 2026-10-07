@@ -1,6 +1,6 @@
 ---
 description: 按 low/medium/high/xhigh/max 把需求变为本地任务方案；只规划，不自动实施
-argument-hint: [--level <level>] <需求描述或任务 id/路径>
+argument-hint: "[--level <level>] <需求描述或任务 id/路径>"
 ---
 
 # /leanflow:plan

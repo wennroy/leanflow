@@ -1,6 +1,6 @@
 ---
 description: 单独核对任务的分档验证证据与验收缺口，不触发完整开发流程
-argument-hint: [任务 id/路径或改动范围]
+argument-hint: "[任务 id/路径或改动范围]"
 ---
 
 # /leanflow:verify
